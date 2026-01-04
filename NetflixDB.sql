@@ -1,7 +1,7 @@
 CREATE DATABASE NetflixDB;
 USE netflixdb;
 
-#Bağımsızlar ÜST TABLOLAR
+
 CREATE TABLE Subscription_Plan(
 	PlanID INT PRIMARY KEY AUTO_INCREMENT,
     PlanName VARCHAR(50) NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE Subscription_Plan(
     Resolution ENUM ('720p (HD)', '1080p (Full HD)', '4K (Ultra HD)') NOT NULL
 );
 
-CREATE TABLE Users (
+CREATE TABLE Users (											
     UserID INT PRIMARY KEY AUTO_INCREMENT,
     Email VARCHAR(100) UNIQUE NOT NULL,
     PasswordHash VARCHAR(255) NOT NULL,
@@ -33,7 +33,6 @@ CREATE TABLE Content (
     ContentType ENUM('Movie', 'Series') NOT NULL
 );
 
-#Bağımlı ALT TABLOLAR (contentten türeyen)
 CREATE TABLE Movie (
     ContentID INT PRIMARY KEY,
     Duration INT NOT NULL CHECK (Duration > 0), 
@@ -42,6 +41,171 @@ CREATE TABLE Movie (
 		REFERENCES Content(ContentID) 
 		ON DELETE CASCADE
 );
+
+CREATE TABLE Series (
+    ContentID INT PRIMARY KEY,
+    TotalSeasons INT,
+    FOREIGN KEY (ContentID) 
+    REFERENCES Content(ContentID) 
+    ON DELETE CASCADE
+);
+
+CREATE TABLE Episode (
+    EpisodeID INT PRIMARY KEY AUTO_INCREMENT,
+    SeasonNumber INT NOT NULL,
+    EpisodeNumber INT NOT NULL,
+    Title VARCHAR(150) NOT NULL,
+    Duration INT NOT NULL,
+	SeriesID INT NOT NULL,
+
+    FOREIGN KEY (SeriesID) REFERENCES Series(ContentID) ON DELETE CASCADE,
+    
+    UNIQUE (SeriesID, SeasonNumber, EpisodeNumber) 
+);
+
+CREATE TABLE Profile (
+	ProfileID INT PRIMARY KEY AUTO_INCREMENT,
+    ProfileName VARCHAR(50) NOT NULL,
+    ProfileType ENUM('Kid', 'Adult') NOT NULL DEFAULT 'Adult',
+	UserID INT NOT NULL,
+     
+    FOREIGN KEY (UserID) 
+        REFERENCES Users(UserID) 
+        ON DELETE CASCADE
+);
+
+CREATE TABLE Subscription_History (
+    HistoryID INT PRIMARY KEY AUTO_INCREMENT,
+    StartDate DATE NOT NULL,
+    EndDate DATE NOT NULL ,
+    Status BOOLEAN DEFAULT TRUE, 
+    UserID INT NOT NULL,
+    PlanID INT NOT NULL,
+    
+    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+    FOREIGN KEY (PlanID) REFERENCES Subscription_Plan(PlanID)
+);
+
+CREATE TABLE Payment_Transaction (
+    TransactionID INT PRIMARY KEY AUTO_INCREMENT,
+    PaymentDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    Amount DECIMAL(10,2) NOT NULL,
+    PaymentMethod ENUM('Credit Card', 'PayPal', 'Gift Card') NOT NULL,
+    
+	HistoryID INT NOT NULL,
+    FOREIGN KEY (HistoryID) REFERENCES Subscription_History(HistoryID) ON DELETE CASCADE
+);
+
+CREATE TABLE Person (
+    PersonID INT PRIMARY KEY AUTO_INCREMENT,
+    FullName VARCHAR(100) NOT NULL,
+    BirthDate DATE
+);
+
+CREATE TABLE Credited (
+    ContentID INT,
+    PersonID INT,
+    RoleType ENUM('Director', 'Actor', 'Screenwriter', 'Producer') NOT NULL,
+    CharacterName VARCHAR(100), 
+
+    PRIMARY KEY (ContentID, PersonID, RoleType),
+    
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (PersonID) REFERENCES Person(PersonID) ON DELETE CASCADE
+);
+
+CREATE TABLE Watch_Session (
+    SessionID INT PRIMARY KEY AUTO_INCREMENT,
+    SessionStart DATETIME DEFAULT CURRENT_TIMESTAMP,
+    SessionEnd DATETIME,
+    DurationSeconds INT DEFAULT 0, 
+    DeviceType VARCHAR(50),   
+    
+	ProfileID INT NOT NULL,
+    MovieID INT, 
+    EpisodeID INT,
+    
+    FOREIGN KEY (ProfileID) REFERENCES Profile(ProfileID) ON DELETE CASCADE,
+    FOREIGN KEY (MovieID) REFERENCES Movie(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (EpisodeID) REFERENCES Episode(EpisodeID) ON DELETE CASCADE,
+    
+
+    CONSTRAINT chk_content_type CHECK (
+        (MovieID IS NOT NULL AND EpisodeID IS NULL) OR 
+        (MovieID IS NULL AND EpisodeID IS NOT NULL)
+    )
+);
+
+
+CREATE TABLE Progress_Update (
+    UpdateID INT PRIMARY KEY AUTO_INCREMENT,
+    SessionID INT NOT NULL,
+    LogTime DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ProgressSeconds INT NOT NULL, 
+    
+    FOREIGN KEY (SessionID) REFERENCES Watch_Session(SessionID) ON DELETE CASCADE
+);
+
+CREATE TABLE Content_Tag (
+    TagID INT PRIMARY KEY AUTO_INCREMENT,
+    TagName VARCHAR(50) UNIQUE NOT NULL 
+);
+
+CREATE TABLE Content_Tag_Map (
+    ContentID INT,
+    TagID INT,
+    
+    PRIMARY KEY (ContentID, TagID),
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (TagID) REFERENCES Content_Tag(TagID) ON DELETE CASCADE
+);
+
+CREATE TABLE MyList (
+    ProfileID INT,
+    ContentID INT,
+    AddedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (ProfileID, ContentID), 
+    FOREIGN KEY (ProfileID) REFERENCES Profile(ProfileID) ON DELETE CASCADE,
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE
+);
+
+CREATE TABLE Rating (
+    ProfileID INT,
+    ContentID INT,
+    Score INT NOT NULL CHECK (Score BETWEEN 1 AND 10), 
+    RatingDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+  
+    
+    PRIMARY KEY (ProfileID, ContentID), 
+    FOREIGN KEY (ProfileID) REFERENCES Profile(ProfileID) ON DELETE CASCADE,
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE
+);
+
+CREATE TABLE Content_Segment (
+    SegmentID INT PRIMARY KEY AUTO_INCREMENT,
+    ContentID INT NOT NULL,
+    Language VARCHAR(50),        
+    SubtitleLanguage VARCHAR(50),
+    
+    
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE
+);
+
+CREATE TABLE Genre (
+    GenreID INT PRIMARY KEY AUTO_INCREMENT,
+    GenreName VARCHAR(50) UNIQUE NOT NULL
+);
+
+CREATE TABLE Content_Genre (
+    ContentID INT,
+    GenreID INT,
+    PRIMARY KEY (ContentID, GenreID),
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (GenreID) REFERENCES Genre(GenreID) ON DELETE CASCADE
+);
+
+#TRIGGERS
 
 DELIMITER $$
 CREATE TRIGGER trg_movie_check
@@ -59,10 +223,161 @@ END$$
 
 DELIMITER ;
 
-CREATE TABLE Series (
-    ContentID INT PRIMARY KEY,
-    TotalSeasons INT,
-    FOREIGN KEY (ContentID) 
-    REFERENCES Content(ContentID) 
-    ON DELETE CASCADE
-);
+
+DELIMITER $$
+CREATE TRIGGER trg_series_check
+BEFORE INSERT ON SERIES 
+FOR EACH ROW
+BEGIN
+	IF( SELECT ContentType 
+		FROM Content
+        WHERE ContentID = NEW.ContentID) <> 'Series' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Hata: Series tablosuna sadece Series tipindeki içerikler eklenebilir!';
+    END IF;
+END$$
+DELIMITER ;
+
+
+DELIMITER $$
+
+CREATE TRIGGER trg_profile_limit
+BEFORE INSERT ON Profile
+FOR EACH ROW
+BEGIN
+    DECLARE max_profiles INT;
+    DECLARE current_profiles INT;
+
+    SELECT sp.MaxProfiles
+    INTO max_profiles
+    FROM Users u
+    JOIN Subscription_Plan sp ON u.PlanID = sp.PlanID
+    WHERE u.UserID = NEW.UserID;
+
+    SELECT COUNT(*)
+    INTO current_profiles
+    FROM Profile
+    WHERE UserID = NEW.UserID;
+
+    IF current_profiles >= max_profiles THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Bu abonelik planı için maksimum profil sayısına ulaşıldı';
+    END IF;
+END$$
+
+DELIMITER ;
+
+
+DELIMITER $$
+
+CREATE TRIGGER trg_check_age_restriction
+BEFORE INSERT ON Watch_Session
+FOR EACH ROW
+BEGIN
+    DECLARE content_rating_val ENUM('0+', '7+', '13+', '16+', '18+');
+    DECLARE profile_type_val ENUM('Kid', 'Adult');
+    DECLARE target_content_id INT;
+
+    IF NEW.MovieID IS NOT NULL THEN
+        SET target_content_id = NEW.MovieID;
+    ELSE
+        SELECT SeriesID INTO target_content_id 
+        FROM Episode 
+        WHERE EpisodeID = NEW.EpisodeID;
+    END IF;
+
+    SELECT AgeRating INTO content_rating_val 
+    FROM Content 
+    WHERE ContentID = target_content_id;
+    
+    SELECT ProfileType INTO profile_type_val 
+    FROM Profile 
+    WHERE ProfileID = NEW.ProfileID;
+
+    IF profile_type_val = 'Kid' AND content_rating_val IN ('16+', '18+') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'HATA: Çocuk profili ile yetişkin içeriği (+16/18) izlenemez!';
+    END IF;
+END$$
+
+DELIMITER ;
+
+#INSERT DATAS
+
+INSERT INTO subscription_plan (PlanName, Price, MaxProfiles, Resolution) VALUES 
+('Temel', 69.99, 1, '720p (HD)' ),
+('Standart', 109.99, 2, '1080p (Full HD)' ),
+('Özel', 149.99, 4, '4K (Ultra HD)' );
+
+INSERT INTO users (Email, PasswordHash, BirthdayDate, Job, Gender, BillingAddress, PlanID) VALUES 
+('erenyalim@hotmail.com', 'hasheren', '2005-07-21', 'Yazılımcı', 'M', 'Beylikdüzü,İstanbul', 3),
+('ilknuryalim@hotmail.com', 'hashilknur', '1979-06-30', 'Bankacı', 'F', 'Beylikdüzü,İstanbul', 2),
+('elifucal@hotmail.com', 'hashfatma', '1955-04-12', 'Emekli', 'F', 'Çankaya, Ankara', 2),
+('hamzaeryetli@hotmail.com', 'hashhamza', '2003-09-15', 'Öğrenci', 'M', 'Bornova, İzmir', 1),
+('kaan@hotmail.com', 'hashkaan', '1995-03-13', 'Mühendis', 'M', 'Bodrum, Muğla', 3),
+('tugce@hotmail.com', 'hashtugce', '2000-01-01', NULL, 'F', 'Kaş, Antalya', 1),
+('cem@hotmail.com', 'hashcem', '1980-10-10', 'Pilot', 'M', 'Kaş, Antalya', 3);
+
+INSERT INTO Profile (ProfileName, ProfileType, UserID) VALUES 
+('ErenMain', 'Adult', 1),
+('Eren2', 'Adult', 1),
+('Eren3', 'Adult', 1),
+('ErenKid', 'Kid', 1),
+('İlknurMain', 'Adult', 2),
+('İlknur2', 'Adult', 2),
+('ElifMain', 'Adult', 3),
+('HamzaMain', 'Adult', 4),
+('KaanMain', 'Adult', 5),
+('KaanKid', 'Kid', 5);
+
+INSERT INTO Content (Title, ReleaseYear, AgeRating, Synopsis, ContentType) VALUES 
+('The Godfather', 1972, '18+', 'Bir mafya babası ailesinde en küçük oğul suç imparatorluğunda adım adım yükselir.', 'Movie'),
+('Toy Story', 1995, '0+', 'Oyuncakların sahibi Andy yokken yaşadığı gizli hayat.', 'Movie'),
+('Sonic', 2020, '7+', 'Hızlı Sonic kendisini yakalamaya çalışanlardan kaçar.', 'Movie'),
+('Interstellar', 2014, '13+', 'Bir grup astronot başka bir gezegen bulmak amacıyla tehlikeli bir yolculuğa çıkar.', 'Movie'),
+('Breaking Bad', 2008, '18+', 'Bir kimya öğretmeninin uyuşturucu baronuna dönüşmesi.', 'Series'),
+('Lupin', 2023, '16+', 'Kibar bir hırsız soygunlar planlar.', 'Series');
+INSERT INTO Movie (ContentID, Duration, BoxOfficeRevenue) VALUES 
+(1, 175, 246000000.00), 
+(2, 81, 373000000.00),  
+(3, 99, 319700000.00),  
+(4, 169, 701700000.00);  
+INSERT INTO Series (ContentID, TotalSeasons) VALUES 
+(5, 5), 
+(6, 3); 
+
+INSERT INTO Episode (SeriesID, SeasonNumber, EpisodeNumber, Title, Duration) VALUES 
+-- Breaking Bad (ID: 5)
+(5, 1, 1, 'Pilot', 58),
+(5, 1, 2, 'Yazı Tura', 48),
+-- Lupin (ID: 6)
+(6, 1, 1, 'Bölüm 1', 45),
+(6, 1, 2, 'Bölüm 2', 42);
+
+INSERT INTO Person (FullName, BirthDate) VALUES 
+('Al Pacino', '1940-04-25'),         -- ID: 1 (Godfather)
+('Tom Hanks', '1956-07-09'),         -- ID: 2 (Toy Story)
+('Jim Carrey', '1962-01-17'),        -- ID: 3 (Sonic - Dr. Robotnik)
+('Matthew McConaughey', '1969-11-04'),-- ID: 4 (Interstellar)
+('Bryan Cranston', '1956-03-07'),    -- ID: 5 (Breaking Bad)
+('Omar Sy', '1978-01-20'),           -- ID: 6 (Lupin)
+('Christopher Nolan', '1970-07-30'); -- ID: 7 (Yönetmen - Interstellar)
+
+INSERT INTO Credited (ContentID, PersonID, RoleType, CharacterName) VALUES 
+(1, 1, 'Actor', 'Michael Corleone'),   -- Al Pacino -> Godfather
+(2, 2, 'Actor', 'Woody (Ses)'),        -- Tom Hanks -> Toy Story
+(3, 3, 'Actor', 'Dr. Robotnik'),       -- Jim Carrey -> Sonic
+(4, 4, 'Actor', 'Cooper'),             -- Matthew M. -> Interstellar
+(4, 7, 'Director', 'Nolan'),              -- Nolan -> Interstellar (Yönetmen)
+(5, 5, 'Actor', 'Walter White'),       -- Bryan Cranston -> Breaking Bad
+(6, 6, 'Actor', 'Assane Diop');        -- Omar Sy -> Lupin
+
+INSERT INTO Genre (GenreName) VALUES ('Suç'), ('Animasyon'), ('Aksiyon'), ('Bilim Kurgu'), ('Drama'), ('Aile');
+
+INSERT INTO Content_Genre (ContentID, GenreID) VALUES 
+(1, 1), (1, 5), -- Godfather: Suç, Drama
+(2, 2), (2, 6), -- Toy Story: Animasyon, Aile
+(3, 3), (3, 6), -- Sonic: Aksiyon, Aile
+(4, 4), (4, 5), -- Interstellar: Bilim Kurgu, Drama
+(5, 1), (5, 5), -- Breaking Bad: Suç, Drama
+(6, 1), (6, 3); -- Lupin: Suç, Aksiyon
