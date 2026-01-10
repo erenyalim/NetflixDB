@@ -1,7 +1,6 @@
 CREATE DATABASE NetflixDB;
 USE netflixdb;
 
-
 CREATE TABLE Subscription_Plan(
 	PlanID INT PRIMARY KEY AUTO_INCREMENT,
     PlanName VARCHAR(50) NOT NULL,
@@ -381,3 +380,69 @@ INSERT INTO Content_Genre (ContentID, GenreID) VALUES
 (4, 4), (4, 5), -- Interstellar: Bilim Kurgu, Drama
 (5, 1), (5, 5), -- Breaking Bad: Suç, Drama
 (6, 1), (6, 3); -- Lupin: Suç, Aksiyon
+
+INSERT INTO Subscription_History (StartDate, EndDate, Status, UserID, PlanID) VALUES 
+('2023-01-01', '2024-01-01', TRUE, 1, 3), -- Eren (Premium)
+('2023-02-15', '2024-02-15', TRUE, 2, 2), -- İlknur (Standart)
+('2023-03-10', '2024-03-10', TRUE, 3, 2), -- Elif (Standart)
+('2023-05-20', '2024-05-20', TRUE, 4, 1), -- Hamza (Temel)
+('2023-06-01', '2024-06-01', TRUE, 5, 3), -- Kaan (Premium)
+('2023-07-01', '2024-07-01', TRUE, 6, 1), -- Tuğçe (Temel)
+('2023-08-01', '2024-08-01', TRUE, 7, 3); -- Cem (Premium)
+
+INSERT INTO Payment_Transaction (PaymentDate, Amount, PaymentMethod, HistoryID) VALUES 
+('2023-01-01 10:00:00', 149.99, 'Credit Card', 1), -- Eren
+('2023-02-15 14:30:00', 109.99, 'Credit Card', 2), -- İlknur
+('2023-03-10 09:15:00', 109.99, 'Gift Card', 3),   -- Elif
+('2023-05-20 11:00:00', 69.99, 'PayPal', 4),       -- Hamza
+('2023-06-01 16:45:00', 149.99, 'Credit Card', 5), -- Kaan
+('2023-07-01 12:00:00', 69.99, 'Credit Card', 6),  -- Tuğçe
+('2023-08-01 08:30:00', 149.99, 'PayPal', 7);      -- Cem
+
+INSERT INTO Watch_Session (ProfileID, MovieID, EpisodeID, SessionStart, SessionEnd, DurationSeconds, DeviceType) VALUES 
+-- 1. FİLM İZLEYENLER
+(1, 1, NULL, '2023-10-01 20:00:00', '2023-10-01 22:55:00', 10500, 'Smart TV'), -- Eren -> Godfather
+(4, 4, NULL, '2023-10-02 18:00:00', '2023-10-02 20:30:00', 9000, 'iPad'),      -- ErenKid -> Toy Story (Çocuk Profili)
+(7, 4, NULL, '2023-10-03 21:00:00', '2023-10-03 23:30:00', 9000, 'Laptop'),    -- Elif -> Interstellar
+(10, 2, NULL, '2023-10-05 14:00:00', '2023-10-05 15:20:00', 4800, 'Smart TV'), -- KaanKid -> Toy Story
+-- 2. DİZİ İZLEYENLER (Binge Watch Senaryosu)
+(9, NULL, 1, '2023-10-06 20:00:00', '2023-10-06 20:58:00', 3480, 'Smart TV'),  -- Kaan -> Breaking Bad E1
+(9, NULL, 2, '2023-10-06 21:00:00', '2023-10-06 21:48:00', 2880, 'Smart TV'),  -- Kaan -> Breaking Bad E2
+-- 3. YARIM BIRAKANLAR (Analiz İçin)
+(5, 4, NULL, '2023-10-07 10:00:00', '2023-10-07 10:15:00', 900, 'Tablet');    -- İlknurMain -> Interstellar (Sadece 15dk izledi)
+
+INSERT INTO Progress_Update (SessionID, ProgressSeconds) VALUES 
+(1, 3600), -- Eren, Godfather'ın 1. saatinde (SessionID: 1)
+(1, 7200), -- Eren, Godfather'ın 2. saatinde (SessionID: 1)
+(5, 1500), -- Kaan, Breaking Bad izlerken 25. dakikada (SessionID: 5)
+(7, 900);  -- İlknur, Interstellar'ı 15. dakikada bırakmış (SessionID: 7)
+
+INSERT INTO MyList (ProfileID, ContentID) VALUES 
+(1, 2), -- Eren -> Toy Story'yi listeye aldı
+(1, 5), -- Eren -> Breaking Bad'i listeye aldı
+(5, 4), -- İlknur -> Interstellar
+(9, 6); -- Kaan -> Lupin
+
+INSERT INTO Rating (ProfileID, ContentID, Score) VALUES 
+(1, 1, 10), -- Eren -> Godfather: 10 Puan
+(4, 2, 9),  -- ErenKid -> Toy Story: 9 Puan
+(9, 5, 10), -- Kaan -> Breaking Bad: 10 Puan
+(7, 4, 8);  -- Elif -> Interstellar: 8 Puan
+
+INSERT INTO Content_Tag (TagName) VALUES 
+('Oscar Ödüllü'), ('Karanlık Atmosfer'), ('Eğlenceli'), ('Sürükleyici');
+INSERT INTO Content_Tag (TagName) VALUES 
+('Oscar Ödüllü'), ('Karanlık Atmosfer'), ('Eğlenceli'), ('Sürükleyici');
+
+INSERT INTO Content_Tag_Map (ContentID, TagID) VALUES 
+(1, 1), (1, 2), -- Godfather: Oscar, Karanlık
+(2, 1), (2, 3), -- Toy Story: Oscar, Eğlenceli
+(4, 1), (4, 4), -- Interstellar: Oscar, Sürükleyici
+(5, 2), (5, 4); -- Breaking Bad: Karanlık, Sürükleyici
+
+INSERT INTO Content_Segment (ContentID, Language, SubtitleLanguage) VALUES 
+(1, 'English', 'Turkish'), -- Godfather
+(1, 'English', 'English'),
+(2, 'English', 'Turkish'), -- Toy Story
+(5, 'English', 'Turkish'), -- Breaking Bad
+(6, 'French', 'Turkish');  -- Lupin (Fransızca Orijinal)
