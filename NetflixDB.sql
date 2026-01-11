@@ -9,8 +9,10 @@ CREATE TABLE Subscription_Plan(
     Resolution ENUM ('720p (HD)', '1080p (Full HD)', '4K (Ultra HD)') NOT NULL
 );
 
-CREATE TABLE Users (											
+CREATE TABLE Users (
     UserID INT PRIMARY KEY AUTO_INCREMENT,
+    FirstName VARCHAR(50) NOT NULL, 
+    LastName VARCHAR(50) NOT NULL,   
     Email VARCHAR(100) UNIQUE NOT NULL,
     PasswordHash VARCHAR(255) NOT NULL,
     BirthdayDate DATE NOT NULL,
@@ -19,17 +21,18 @@ CREATE TABLE Users (
     BillingAddress VARCHAR(255) NOT NULL,
     PlanID INT NOT NULL,
 
-    FOREIGN KEY (PlanID)
-        REFERENCES Subscription_Plan(PlanID)
+    FOREIGN KEY (PlanID) REFERENCES Subscription_Plan(PlanID)
 );
 
 CREATE TABLE Content (
     ContentID INT PRIMARY KEY AUTO_INCREMENT,
     Title VARCHAR(150) NOT NULL,
     ReleaseYear YEAR NOT NULL,
-	AgeRating ENUM('0+', '7+', '13+', '16+', '18+') NOT NULL,
+    AgeRating ENUM('0+', '7+', '13+', '16+', '18+') NOT NULL,
     Synopsis TEXT NOT NULL,
-    ContentType ENUM('Movie', 'Series') NOT NULL
+    ContentType ENUM('Movie', 'Series') NOT NULL,
+    
+    AverageScore DECIMAL(4,2) DEFAULT 0.0           
 );
 
 CREATE TABLE Movie (
@@ -181,14 +184,25 @@ CREATE TABLE Rating (
     FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE
 );
 
-CREATE TABLE Content_Segment (
-    SegmentID INT PRIMARY KEY AUTO_INCREMENT,
-    ContentID INT NOT NULL,
-    Language VARCHAR(50),        
-    SubtitleLanguage VARCHAR(50),
+CREATE TABLE Languages (
+    LanguageID INT PRIMARY KEY AUTO_INCREMENT,
+    LanguageName VARCHAR(50) UNIQUE NOT NULL 
+);
+
+CREATE TABLE Content_Audio (
+    ContentID INT,
+    LanguageID INT,
+    PRIMARY KEY (ContentID, LanguageID), 
     
-    
-    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (LanguageID) REFERENCES Languages(LanguageID) ON DELETE CASCADE
+);
+CREATE TABLE Content_Subtitle (
+    ContentID INT,
+    LanguageID INT,
+    PRIMARY KEY (ContentID, LanguageID),
+    FOREIGN KEY (ContentID) REFERENCES Content(ContentID) ON DELETE CASCADE,
+    FOREIGN KEY (LanguageID) REFERENCES Languages(LanguageID) ON DELETE CASCADE
 );
 
 CREATE TABLE Genre (
@@ -301,6 +315,24 @@ END$$
 
 DELIMITER ;
 
+DELIMITER $$
+
+CREATE TRIGGER trg_update_average_score
+AFTER INSERT ON Rating
+FOR EACH ROW
+BEGIN
+    UPDATE Content 
+    SET AverageScore = (
+        SELECT AVG(Score) 
+        FROM Rating 
+        WHERE ContentID = NEW.ContentID
+    )
+    WHERE ContentID = NEW.ContentID;
+END$$
+
+DELIMITER ;
+
+
 #INSERT DATAS
 
 INSERT INTO subscription_plan (PlanName, Price, MaxProfiles, Resolution) VALUES 
@@ -308,14 +340,14 @@ INSERT INTO subscription_plan (PlanName, Price, MaxProfiles, Resolution) VALUES
 ('Standart', 109.99, 2, '1080p (Full HD)' ),
 ('Özel', 149.99, 4, '4K (Ultra HD)' );
 
-INSERT INTO users (Email, PasswordHash, BirthdayDate, Job, Gender, BillingAddress, PlanID) VALUES 
-('erenyalim@hotmail.com', 'hasheren', '2005-07-21', 'Yazılımcı', 'M', 'Beylikdüzü,İstanbul', 3),
-('ilknuryalim@hotmail.com', 'hashilknur', '1979-06-30', 'Bankacı', 'F', 'Beylikdüzü,İstanbul', 2),
-('elifucal@hotmail.com', 'hashfatma', '1955-04-12', 'Emekli', 'F', 'Çankaya, Ankara', 2),
-('hamzaeryetli@hotmail.com', 'hashhamza', '2003-09-15', 'Öğrenci', 'M', 'Bornova, İzmir', 1),
-('kaan@hotmail.com', 'hashkaan', '1995-03-13', 'Mühendis', 'M', 'Bodrum, Muğla', 3),
-('tugce@hotmail.com', 'hashtugce', '2000-01-01', NULL, 'F', 'Kaş, Antalya', 1),
-('cem@hotmail.com', 'hashcem', '1980-10-10', 'Pilot', 'M', 'Kaş, Antalya', 3);
+INSERT INTO Users (FirstName, LastName, Email, PasswordHash, BirthdayDate, Job, Gender, BillingAddress, PlanID) VALUES 
+('Eren', 'Yalım', 'eren@hotmail.com', 'hasheren', '2005-07-21', 'Yazılımcı', 'M', 'Beylikdüzü,İstanbul', 3),
+('İlknur', 'Karadaş', 'ilknur@hotmail.com', 'hashilknur', '1979-06-30', 'Bankacı', 'F', 'Sarıyer,İstanbul', 2),
+('Elif', 'Uçal', 'elif@hotmail.com', 'hashelif', '1955-04-12', 'Emekli', 'F', 'Çankaya, Ankara', 2),
+('Hamza', 'Eryetli', 'hamza@hotmail.com', 'hashhamza', '2003-09-15', 'Öğrenci', 'M', 'Bornova, İzmir', 1),
+('Kaan', 'Seyman', 'kaan@hotmail.com', 'hashkaan', '1995-03-13', 'Mühendis', 'M', 'Bodrum, Muğla', 3),
+('Tuğçe', 'Üstün', 'tugce@hotmail.com', 'hashtugce', '2000-01-01', NULL, 'F', 'Kaş, Antalya', 1),
+('Cem', 'Üstün', 'cem@hotmail.com', 'hashcem', '1980-10-10', 'Pilot', 'M', 'Kaş, Antalya', 3);
 
 INSERT INTO Profile (ProfileName, ProfileType, UserID) VALUES 
 ('ErenMain', 'Adult', 1),
@@ -327,15 +359,18 @@ INSERT INTO Profile (ProfileName, ProfileType, UserID) VALUES
 ('ElifMain', 'Adult', 3),
 ('HamzaMain', 'Adult', 4),
 ('KaanMain', 'Adult', 5),
-('KaanKid', 'Kid', 5);
+('KaanKid', 'Kid', 5),
+('TuğçeMain', 'Adult', 6),
+('CemMain', 'Adult', 7);
 
-INSERT INTO Content (Title, ReleaseYear, AgeRating, Synopsis, ContentType) VALUES 
-('The Godfather', 1972, '18+', 'Bir mafya babası ailesinde en küçük oğul suç imparatorluğunda adım adım yükselir.', 'Movie'),
-('Toy Story', 1995, '0+', 'Oyuncakların sahibi Andy yokken yaşadığı gizli hayat.', 'Movie'),
-('Sonic', 2020, '7+', 'Hızlı Sonic kendisini yakalamaya çalışanlardan kaçar.', 'Movie'),
-('Interstellar', 2014, '13+', 'Bir grup astronot başka bir gezegen bulmak amacıyla tehlikeli bir yolculuğa çıkar.', 'Movie'),
-('Breaking Bad', 2008, '18+', 'Bir kimya öğretmeninin uyuşturucu baronuna dönüşmesi.', 'Series'),
-('Lupin', 2023, '16+', 'Kibar bir hırsız soygunlar planlar.', 'Series');
+INSERT INTO Content (Title, ReleaseYear, AgeRating, Synopsis, ContentType, AverageScore) VALUES 
+('The Godfather', 1972, '18+', 'Bir mafya babası ailesinde en küçük oğul suç imparatorluğunda adım adım yükselir.', 'Movie', 0),
+('Toy Story', 1995, '0+', 'Oyuncakların sahibi Andy yokken yaşadığı gizli hayat.', 'Movie', 0),
+('Sonic', 2020, '7+', 'Hızlı Sonic kendisini yakalamaya çalışanlardan kaçar.', 'Movie', 0),
+('Interstellar', 2014, '13+', 'Bir grup astronot başka bir gezegen bulmak amacıyla tehlikeli bir yolculuğa çıkar.', 'Movie', 0),
+('Breaking Bad', 2008, '18+', 'Bir kimya öğretmeninin uyuşturucu baronuna dönüşmesi.', 'Series', 0),
+('Lupin', 2023, '16+', 'Kibar bir hırsız soygunlar planlar.', 'Series', 0);
+
 INSERT INTO Movie (ContentID, Duration, BoxOfficeRevenue) VALUES 
 (1, 175, 246000000.00), 
 (2, 81, 373000000.00),  
@@ -382,55 +417,73 @@ INSERT INTO Content_Genre (ContentID, GenreID) VALUES
 (6, 1), (6, 3); -- Lupin: Suç, Aksiyon
 
 INSERT INTO Subscription_History (StartDate, EndDate, Status, UserID, PlanID) VALUES 
-('2023-01-01', '2024-01-01', TRUE, 1, 3), -- Eren (Premium)
-('2023-02-15', '2024-02-15', TRUE, 2, 2), -- İlknur (Standart)
-('2023-03-10', '2024-03-10', TRUE, 3, 2), -- Elif (Standart)
-('2023-05-20', '2024-05-20', TRUE, 4, 1), -- Hamza (Temel)
-('2023-06-01', '2024-06-01', TRUE, 5, 3), -- Kaan (Premium)
-('2023-07-01', '2024-07-01', TRUE, 6, 1), -- Tuğçe (Temel)
-('2023-08-01', '2024-08-01', TRUE, 7, 3); -- Cem (Premium)
+-- --- GEÇMİŞ DÖNEM (2025 - Hepsi FALSE / Ayrılanlar veya Süresi Dolanlar) ---
+('2025-01-01', '2025-02-01', FALSE, 1, 3), -- Eren (Eski)
+('2025-02-15', '2025-03-15', FALSE, 2, 2), -- İlknur (Eski)
+('2025-03-10', '2025-04-10', FALSE, 3, 2), -- Elif (Eski - BIRAKTI)
+('2025-05-20', '2025-06-20', FALSE, 4, 1), -- Hamza (Eski)
+('2025-06-01', '2025-07-01', FALSE, 5, 3), -- Kaan (Eski)
+('2025-07-01', '2025-08-01', FALSE, 6, 1), -- Tuğçe (Eski)
+('2025-08-01', '2025-09-01', FALSE, 7, 3), -- Cem (Eski - BIRAKTI)
+-- --- GÜNCEL DÖNEM (2026 - AKTİF ÜYELER - TRUE) ---
+('2026-01-01', '2026-02-01', TRUE, 1, 3), -- Eren (Yeniledi - AKTİF)
+('2026-01-05', '2026-02-05', TRUE, 5, 3), -- Kaan (Yeniledi - AKTİF)
+('2026-01-10', '2026-02-10', TRUE, 2, 2), -- İlknur (Geri Döndü - AKTİF)
+('2026-01-12', '2026-02-12', TRUE, 4, 1), -- Hamza (Geri Döndü - AKTİF)
+('2026-01-15', '2026-02-15', TRUE, 6, 1); -- Tuğçe (Geri Döndü - AKTİF)
 
 INSERT INTO Payment_Transaction (PaymentDate, Amount, PaymentMethod, HistoryID) VALUES 
-('2023-01-01 10:00:00', 149.99, 'Credit Card', 1), -- Eren
-('2023-02-15 14:30:00', 109.99, 'Credit Card', 2), -- İlknur
-('2023-03-10 09:15:00', 109.99, 'Gift Card', 3),   -- Elif
-('2023-05-20 11:00:00', 69.99, 'PayPal', 4),       -- Hamza
-('2023-06-01 16:45:00', 149.99, 'Credit Card', 5), -- Kaan
-('2023-07-01 12:00:00', 69.99, 'Credit Card', 6),  -- Tuğçe
-('2023-08-01 08:30:00', 149.99, 'PayPal', 7);      -- Cem
+-- 2025 Ödemeleri (Geçmiş)
+('2025-01-01 10:00:00', 149.99, 'Credit Card', 1),
+('2025-02-15 14:30:00', 109.99, 'Credit Card', 2),
+('2025-03-10 09:15:00', 109.99, 'Gift Card', 3),
+('2025-05-20 11:00:00', 69.99, 'PayPal', 4),
+('2025-06-01 16:45:00', 149.99, 'Credit Card', 5),
+('2025-07-01 12:00:00', 69.99, 'Credit Card', 6),
+('2025-08-01 08:30:00', 149.99, 'PayPal', 7),
+-- 2026 Ödemeleri (YENİ - CİRO ARTIRAN KISIM)
+('2026-01-01 09:00:00', 149.99, 'Credit Card', 8),  -- Eren (Ocak 2026)
+('2026-01-05 14:00:00', 149.99, 'Credit Card', 9),  -- Kaan (Ocak 2026)
+('2026-01-10 10:30:00', 109.99, 'Credit Card', 10), -- İlknur (Ocak 2026)
+('2026-01-12 11:15:00', 69.99, 'PayPal', 11),       -- Hamza (Ocak 2026)
+('2026-01-15 16:20:00', 69.99, 'Credit Card', 12);  -- Tuğçe (Ocak 2026)
 
 INSERT INTO Watch_Session (ProfileID, MovieID, EpisodeID, SessionStart, SessionEnd, DurationSeconds, DeviceType) VALUES 
--- 1. FİLM İZLEYENLER
-(1, 1, NULL, '2023-10-01 20:00:00', '2023-10-01 22:55:00', 10500, 'Smart TV'), -- Eren -> Godfather
-(4, 4, NULL, '2023-10-02 18:00:00', '2023-10-02 20:30:00', 9000, 'iPad'),      -- ErenKid -> Toy Story (Çocuk Profili)
-(7, 4, NULL, '2023-10-03 21:00:00', '2023-10-03 23:30:00', 9000, 'Laptop'),    -- Elif -> Interstellar
-(10, 2, NULL, '2023-10-05 14:00:00', '2023-10-05 15:20:00', 4800, 'Smart TV'), -- KaanKid -> Toy Story
--- 2. DİZİ İZLEYENLER (Binge Watch Senaryosu)
-(9, NULL, 1, '2023-10-06 20:00:00', '2023-10-06 20:58:00', 3480, 'Smart TV'),  -- Kaan -> Breaking Bad E1
-(9, NULL, 2, '2023-10-06 21:00:00', '2023-10-06 21:48:00', 2880, 'Smart TV'),  -- Kaan -> Breaking Bad E2
--- 3. YARIM BIRAKANLAR (Analiz İçin)
-(5, 4, NULL, '2023-10-07 10:00:00', '2023-10-07 10:15:00', 900, 'Tablet');    -- İlknurMain -> Interstellar (Sadece 15dk izledi)
+(1, 1, NULL, '2025-01-10 20:00:00', '2025-01-10 22:55:00', 10500, 'Smart TV'),
+(4, 2, NULL, '2025-01-12 18:00:00', '2025-01-12 20:30:00', 9000, 'iPad'),
+(7, 4, NULL, '2025-03-15 21:00:00', '2025-03-15 23:30:00', 9000, 'Laptop'),
+(10, 2, NULL, '2025-06-05 14:00:00', '2025-06-05 15:20:00', 4800, 'Smart TV'),
+(9, NULL, 1, '2025-06-10 20:00:00', '2025-06-10 20:58:00', 3480, 'Smart TV'),
+(9, NULL, 2, '2025-06-10 21:00:00', '2025-06-10 21:48:00', 2880, 'Smart TV'),
+(5, 4, NULL, '2025-02-20 10:00:00', '2025-02-20 10:15:00', 900, 'Tablet'),
+(1, 3, NULL, '2026-01-02 20:00:00', '2026-01-02 21:40:00', 6000, 'Smart TV'),
+(5, NULL, 3, '2026-01-11 21:00:00', '2026-01-11 23:00:00', 7200, 'Laptop'),
+(8, 2, NULL, '2026-01-13 14:00:00', '2026-01-13 15:21:00', 4860, 'Phone'),
+(11, NULL, 1, '2026-01-16 22:00:00', '2026-01-16 23:00:00', 3600, 'Tablet');
 
 INSERT INTO Progress_Update (SessionID, ProgressSeconds) VALUES 
-(1, 3600), -- Eren, Godfather'ın 1. saatinde (SessionID: 1)
-(1, 7200), -- Eren, Godfather'ın 2. saatinde (SessionID: 1)
-(5, 1500), -- Kaan, Breaking Bad izlerken 25. dakikada (SessionID: 5)
-(7, 900);  -- İlknur, Interstellar'ı 15. dakikada bırakmış (SessionID: 7)
+(1, 3600), -- Eren, Godfather'ın 1. saatinde
+(1, 7200), -- Eren, Godfather'ın 2. saatinde
+(5, 1500), -- Kaan, Breaking Bad izlerken 25. dakikada
+(7, 900),  -- İlknur, Interstellar'ı 15. dakikada kapatmış (Yarım bırakan)
+(11, 120); -- Tuğçe, Breaking Bad'e yeni başlamış (2. dakika)
 
 INSERT INTO MyList (ProfileID, ContentID) VALUES 
-(1, 2), -- Eren -> Toy Story'yi listeye aldı
-(1, 5), -- Eren -> Breaking Bad'i listeye aldı
-(5, 4), -- İlknur -> Interstellar
-(9, 6); -- Kaan -> Lupin
+(1, 2), -- Eren (ID:1) -> Toy Story'yi listeye aldı
+(1, 5), -- Eren (ID:1) -> Breaking Bad'i listeye aldı
+(5, 4), -- İlknur (ID:5) -> Interstellar
+(9, 6), -- Kaan (ID:9) -> Lupin
+(8, 1), -- Hamza (ID:8) -> Godfather (Yeni Aktif Üye)
+(11, 3); -- Tuğçe (ID:11) -> Sonic (Yeni Aktif Üye)
 
 INSERT INTO Rating (ProfileID, ContentID, Score) VALUES 
-(1, 1, 10), -- Eren -> Godfather: 10 Puan
-(4, 2, 9),  -- ErenKid -> Toy Story: 9 Puan
-(9, 5, 10), -- Kaan -> Breaking Bad: 10 Puan
-(7, 4, 8);  -- Elif -> Interstellar: 8 Puan
+(1, 1, 10), -- Eren (ID:1) -> Godfather: 10 Puan
+(4, 2, 9),  -- ErenKid (ID:4) -> Toy Story: 9 Puan
+(9, 5, 10), -- Kaan (ID:9) -> Breaking Bad: 10 Puan
+(7, 4, 8),  -- Elif (ID:7) -> Interstellar: 8 Puan
+(5, 6, 9),  -- İlknur (ID:5) -> Lupin: 9 Puan (2026'da izledi ve beğendi)
+(8, 2, 7);  -- Hamza (ID:8) -> Toy Story: 7 Puan
 
-INSERT INTO Content_Tag (TagName) VALUES 
-('Oscar Ödüllü'), ('Karanlık Atmosfer'), ('Eğlenceli'), ('Sürükleyici');
 INSERT INTO Content_Tag (TagName) VALUES 
 ('Oscar Ödüllü'), ('Karanlık Atmosfer'), ('Eğlenceli'), ('Sürükleyici');
 
@@ -440,9 +493,151 @@ INSERT INTO Content_Tag_Map (ContentID, TagID) VALUES
 (4, 1), (4, 4), -- Interstellar: Oscar, Sürükleyici
 (5, 2), (5, 4); -- Breaking Bad: Karanlık, Sürükleyici
 
-INSERT INTO Content_Segment (ContentID, Language, SubtitleLanguage) VALUES 
-(1, 'English', 'Turkish'), -- Godfather
-(1, 'English', 'English'),
-(2, 'English', 'Turkish'), -- Toy Story
-(5, 'English', 'Turkish'), -- Breaking Bad
-(6, 'French', 'Turkish');  -- Lupin (Fransızca Orijinal)
+INSERT INTO Languages (LanguageName) VALUES 
+('İngilizce'), 
+('Türkçe'), 
+('Fransızca'), 
+('Almanca'), 
+('İspanyolca');
+
+INSERT INTO Content_Audio (ContentID, LanguageID) VALUES 
+(1, 1), 
+(1, 2),
+(2, 1),
+(2, 2), 
+(3, 1),
+(3, 2), 
+(4, 1),
+(4, 2), 
+(5, 1),
+(5, 2),
+(5, 3),
+(5, 4),
+(5, 5),
+(6, 1), 
+(6, 2), 
+(6, 3);
+
+INSERT INTO content_subtitle (ContentID, LanguageID) VALUES 
+(1, 1), 
+(1, 2),
+(2, 1),
+(2, 2), 
+(3, 1),
+(3, 2), 
+(4, 1),
+(4, 2), 
+(5, 1),
+(5, 2),
+(5, 3),
+(5, 4),
+(5, 5),
+(6, 1), 
+(6, 2), 
+(6, 3);
+
+#"My List" (Listem) Fonksiyonelliği - EKSİK VAR
+-- İlknur, 'Sonic' filmini listesine ekliyor ama İZLEMİYOR.
+INSERT INTO MyList (ProfileID, ContentID) VALUES 
+((SELECT ProfileID FROM Profile WHERE ProfileName='İlknurMain'), 3); -- 3: Sonic
+
+INSERT INTO Episode (SeriesID, SeasonNumber, EpisodeNumber, Title, Duration) 
+VALUES (5, 2, 1, 'Seven Thirty-Seven', 47);
+
+#							#
+#	SORGULAR VE TESTLER     #
+#							#
+
+#1.şablon
+SELECT 
+    c.Title AS 'Film/Dizi',
+    c.ReleaseYear AS 'Yıl',
+    c.AgeRating AS 'Yaş Sınırı',
+    p.FullName AS 'Kişi',
+    cr.RoleType AS 'Rolü',
+    g.GenreName AS 'Tür'
+FROM Content c
+JOIN Credited cr ON c.ContentID = cr.ContentID
+JOIN Person p ON cr.PersonID = p.PersonID
+JOIN Content_Genre cg ON c.ContentID = cg.ContentID
+JOIN Genre g ON cg.GenreID = g.GenreID
+WHERE 
+    -- p.FullName LIKE '%Nolan%'       -- SENARYO A: İsme göre ara
+    cr.RoleType = 'Actor'    -- SENARYO B: Sadece oyuncuları getir
+    -- AND g.GenreName = 'Aksiyon'   -- SENARYO C: Sadece Bilim Kurgu getir
+    -- AND c.ReleaseYear > 2000     -- SENARYO D: 2000 sonrası filmler
+ORDER BY c.ReleaseYear DESC;
+
+#2. şablon
+SELECT 
+    u.Email,
+    p.ProfileName,
+    SUBSTRING_INDEX(u.BillingAddress, ',', -1) AS Sehir, -- Adresin son kısmını (Şehir) alır
+    COUNT(ws.SessionID) AS ToplamOturum,
+    SUM(ws.DurationSeconds) / 60 AS ToplamDakika,
+    ws.DeviceType AS TercihEdilenCihaz
+FROM Users u
+JOIN Profile p ON u.UserID = p.UserID
+JOIN Watch_Session ws ON p.ProfileID = ws.ProfileID
+GROUP BY u.Email, p.ProfileName, ws.DeviceType
+HAVING 
+    -- FİLTRELER BURAYA --
+    
+    ToplamDakika > 0              -- SENARYO A: Hiç izlemeyenleri ele
+    -- AND Sehir LIKE '%Ankara%'  -- SENARYO B: Sadece Ankara'dakiler
+    -- AND DeviceType = 'iPad'    -- SENARYO C: Sadece iPad kullananlar
+ORDER BY ToplamDakika DESC;
+
+#3.şablon
+SELECT 
+    sp.PlanName AS Paket,
+    sp.Price AS PaketFiyati, -- Bunu select'te istediğimiz için...
+    COUNT(DISTINCT u.UserID) AS AboneSayisi,
+    SUM(pt.Amount) AS ToplamCiro,
+    pt.PaymentMethod AS OdemeYontemi
+FROM Subscription_Plan sp
+JOIN Users u ON sp.PlanID = u.PlanID
+JOIN Subscription_History sh ON u.UserID = sh.UserID
+JOIN Payment_Transaction pt ON sh.HistoryID = pt.HistoryID
+GROUP BY sp.PlanName, pt.PaymentMethod, sp.Price -- ...buraya da eklemek zorundayız.
+ORDER BY ToplamCiro DESC;
+
+#Ödeme tutarı ile Plan fiyatı uyuşuyor mu?
+SELECT 
+    u.Email, 
+    sp.PlanName, 
+    sp.Price AS 'Olması Gereken', 
+    pt.Amount AS 'Ödenen',
+    (CASE WHEN sp.Price = pt.Amount THEN '✅ Doğru' ELSE '❌ HATA' END) AS Durum
+FROM Payment_Transaction pt
+JOIN Subscription_History sh ON pt.HistoryID = sh.HistoryID
+JOIN Users u ON sh.UserID = u.UserID
+JOIN Subscription_Plan sp ON sh.PlanID = sp.PlanID;
+
+#Basic paketi olan biri 4 profil açabilir mi?
+-- Hamza'nın (Basic Paket) zaten bir profili var. İkincisini eklemeyi dene:
+INSERT INTO Profile (ProfileName, ProfileType, UserID) 
+VALUES ('Hamza Kaçak', 'Adult', (SELECT UserID FROM Users WHERE Email='hamza@hotmail.com'));
+
+#Çocuk profili +18 film izleyebilir mi?
+-- ErenKid profiline (Çocuk) Lupin (+16) izletmeye çalış
+INSERT INTO Watch_Session (ProfileID, EpisodeID, SessionStart) 
+VALUES (
+    (SELECT ProfileID FROM Profile WHERE ProfileName='ErenKid'), 
+    (SELECT EpisodeID FROM Episode WHERE Title='Bölüm 1' LIMIT 1), 
+    NOW()
+);
+
+#Yarım bırakılan içerikler
+SELECT 
+    c.Title AS 'İçerik',
+    ws.DurationSeconds AS 'İzlediği Süre (Sn)',
+    (m.Duration * 60) AS 'Filmin Toplam Süresi (Sn)', -- Dakikayı saniyeye çevirdik
+    CONCAT(ROUND((pu.ProgressSeconds / (m.Duration * 60) * 100), 1), '%') AS 'Tamamlanma Oranı'
+FROM Progress_Update pu
+JOIN Watch_Session ws ON pu.SessionID = ws.SessionID
+JOIN Movie m ON ws.MovieID = m.ContentID
+JOIN Content c ON m.ContentID = c.ContentID
+WHERE (pu.ProgressSeconds / (m.Duration * 60)) < 0.20; -- Gerçek süreye göre %20 altı
+
+
