@@ -218,7 +218,7 @@ CREATE TABLE Content_Genre (
     FOREIGN KEY (GenreID) REFERENCES Genre(GenreID) ON DELETE CASCADE
 );
 
-#TRIGGERS
+-- TRIGGERS
 
 DELIMITER $$
 CREATE TRIGGER trg_movie_check
@@ -386,7 +386,8 @@ INSERT INTO Episode (SeriesID, SeasonNumber, EpisodeNumber, Title, Duration) VAL
 (5, 1, 2, 'Yazı Tura', 48),
 -- Lupin (ID: 6)
 (6, 1, 1, 'Bölüm 1', 45),
-(6, 1, 2, 'Bölüm 2', 42);
+(6, 1, 2, 'Bölüm 2', 42),
+(5, 2, 1, 'Seven Thirty-Seven', 47);
 
 INSERT INTO Person (FullName, BirthDate) VALUES 
 ('Al Pacino', '1940-04-25'),         -- ID: 1 (Godfather)
@@ -536,91 +537,15 @@ INSERT INTO content_subtitle (ContentID, LanguageID) VALUES
 (6, 2), 
 (6, 3);
 
-#"My List" (Listem) Fonksiyonelliği - EKSİK VAR
--- İlknur, 'Sonic' filmini listesine ekliyor ama İZLEMİYOR.
-INSERT INTO MyList (ProfileID, ContentID) VALUES 
-((SELECT ProfileID FROM Profile WHERE ProfileName='İlknurMain'), 3); -- 3: Sonic
-
-INSERT INTO Episode (SeriesID, SeasonNumber, EpisodeNumber, Title, Duration) 
-VALUES (5, 2, 1, 'Seven Thirty-Seven', 47);
-
 #							#
 #	SORGULAR VE TESTLER     #
 #							#
 
-#1.şablon
-SELECT 
-    c.Title AS 'Film/Dizi',
-    c.ReleaseYear AS 'Yıl',
-    c.AgeRating AS 'Yaş Sınırı',
-    p.FullName AS 'Kişi',
-    cr.RoleType AS 'Rolü',
-    g.GenreName AS 'Tür'
-FROM Content c
-JOIN Credited cr ON c.ContentID = cr.ContentID
-JOIN Person p ON cr.PersonID = p.PersonID
-JOIN Content_Genre cg ON c.ContentID = cg.ContentID
-JOIN Genre g ON cg.GenreID = g.GenreID
-WHERE 
-    -- p.FullName LIKE '%Nolan%'       -- SENARYO A: İsme göre ara
-    cr.RoleType = 'Actor'    -- SENARYO B: Sadece oyuncuları getir
-    -- AND g.GenreName = 'Aksiyon'   -- SENARYO C: Sadece Bilim Kurgu getir
-    -- AND c.ReleaseYear > 2000     -- SENARYO D: 2000 sonrası filmler
-ORDER BY c.ReleaseYear DESC;
-
-#2. şablon
-SELECT 
-    u.Email,
-    p.ProfileName,
-    SUBSTRING_INDEX(u.BillingAddress, ',', -1) AS Sehir, -- Adresin son kısmını (Şehir) alır
-    COUNT(ws.SessionID) AS ToplamOturum,
-    SUM(ws.DurationSeconds) / 60 AS ToplamDakika,
-    ws.DeviceType AS TercihEdilenCihaz
-FROM Users u
-JOIN Profile p ON u.UserID = p.UserID
-JOIN Watch_Session ws ON p.ProfileID = ws.ProfileID
-GROUP BY u.Email, p.ProfileName, ws.DeviceType
-HAVING 
-    -- FİLTRELER BURAYA --
-    
-    ToplamDakika > 0              -- SENARYO A: Hiç izlemeyenleri ele
-    -- AND Sehir LIKE '%Ankara%'  -- SENARYO B: Sadece Ankara'dakiler
-    -- AND DeviceType = 'iPad'    -- SENARYO C: Sadece iPad kullananlar
-ORDER BY ToplamDakika DESC;
-
-#3.şablon
-SELECT 
-    sp.PlanName AS Paket,
-    sp.Price AS PaketFiyati, -- Bunu select'te istediğimiz için...
-    COUNT(DISTINCT u.UserID) AS AboneSayisi,
-    SUM(pt.Amount) AS ToplamCiro,
-    pt.PaymentMethod AS OdemeYontemi
-FROM Subscription_Plan sp
-JOIN Users u ON sp.PlanID = u.PlanID
-JOIN Subscription_History sh ON u.UserID = sh.UserID
-JOIN Payment_Transaction pt ON sh.HistoryID = pt.HistoryID
-GROUP BY sp.PlanName, pt.PaymentMethod, sp.Price -- ...buraya da eklemek zorundayız.
-ORDER BY ToplamCiro DESC;
-
-#Ödeme tutarı ile Plan fiyatı uyuşuyor mu?
-SELECT 
-    u.Email, 
-    sp.PlanName, 
-    sp.Price AS 'Olması Gereken', 
-    pt.Amount AS 'Ödenen',
-    (CASE WHEN sp.Price = pt.Amount THEN '✅ Doğru' ELSE '❌ HATA' END) AS Durum
-FROM Payment_Transaction pt
-JOIN Subscription_History sh ON pt.HistoryID = sh.HistoryID
-JOIN Users u ON sh.UserID = u.UserID
-JOIN Subscription_Plan sp ON sh.PlanID = sp.PlanID;
-
-#Basic paketi olan biri 4 profil açabilir mi?
--- Hamza'nın (Basic Paket) zaten bir profili var. İkincisini eklemeyi dene:
+-- Basic paketi olan biri 4 profil açabilir mi?
 INSERT INTO Profile (ProfileName, ProfileType, UserID) 
-VALUES ('Hamza Kaçak', 'Adult', (SELECT UserID FROM Users WHERE Email='hamza@hotmail.com'));
+VALUES ('HamzaNew', 'Adult', (SELECT UserID FROM Users WHERE Email='hamza@hotmail.com'));
 
-#Çocuk profili +18 film izleyebilir mi?
--- ErenKid profiline (Çocuk) Lupin (+16) izletmeye çalış
+-- Çocuk profili +18 film izleyebilir mi?
 INSERT INTO Watch_Session (ProfileID, EpisodeID, SessionStart) 
 VALUES (
     (SELECT ProfileID FROM Profile WHERE ProfileName='ErenKid'), 
@@ -628,16 +553,109 @@ VALUES (
     NOW()
 );
 
-#Yarım bırakılan içerikler
+-- Movie tablosuna dizi ekleme HATA verir
+INSERT INTO Content (Title, ReleaseYear, AgeRating, Synopsis, ContentType) 
+VALUES ('Test Dizisi', 2024, '13+', 'Test', 'Series');
+
+INSERT INTO Movie (ContentID, Duration, BoxOfficeRevenue) 
+VALUES ((SELECT ContentID FROM Content WHERE Title = 'Test Dizisi' LIMIT 1), 120, 5000);
+
+-- Hangi abone paketinden ne kadar ciro ? 
 SELECT 
-    c.Title AS 'İçerik',
-    ws.DurationSeconds AS 'İzlediği Süre (Sn)',
-    (m.Duration * 60) AS 'Filmin Toplam Süresi (Sn)', -- Dakikayı saniyeye çevirdik
-    CONCAT(ROUND((pu.ProgressSeconds / (m.Duration * 60) * 100), 1), '%') AS 'Tamamlanma Oranı'
-FROM Progress_Update pu
-JOIN Watch_Session ws ON pu.SessionID = ws.SessionID
-JOIN Movie m ON ws.MovieID = m.ContentID
-JOIN Content c ON m.ContentID = c.ContentID
-WHERE (pu.ProgressSeconds / (m.Duration * 60)) < 0.20; -- Gerçek süreye göre %20 altı
+sp.PlanName AS "Plan Adı",
+COUNT(DISTINCT u.UserID) AS "Abone Sayısı",
+SUM(pt.amount) AS "Ciro"
+FROM subscription_plan sp
+JOIN USERS u ON sp.PlanID = u.PlanID
+JOIN subscription_history sh ON u.UserID = sh.UserID
+JOIN payment_transaction pt ON sh.HistoryID = pt.HistoryID
+GROUP BY sp.PlanName
+ORDER BY SUM(pt.amount) DESC;
+
+-- Aktif üyeler ve ödediği ücretler
+SELECT 
+u.FirstName,
+u.LastName,
+sp.PlanName,
+pt.Amount
+FROM Users u
+JOIN subscription_history sh ON u.UserID = sh.UserID
+JOIN subscription_plan sp ON u.PlanID = sp.PlanID
+JOIN payment_transaction pt ON sh.HistoryID = pt.HistoryID
+WHERE sh.status = TRUE;
+
+-- Filmin tüm detayları 
+SELECT 
+    c.Title AS 'Film',
+    c.ReleaseYear AS 'Yıl',
+    g.GenreName AS 'Tür',
+    p.FullName AS 'Kişi',
+    cr.RoleType AS 'Rolü',
+    c.averagescore AS "Puan"
+FROM Content c
+JOIN Content_Genre cg ON c.ContentID = cg.ContentID
+JOIN Genre g ON cg.GenreID = g.GenreID
+JOIN Credited cr ON c.ContentID = cr.ContentID
+JOIN Person p ON cr.PersonID = p.PersonID
+JOIN rating r ON c.ContentID = r.ContentID
+WHERE c.Title = 'Toy Story';
+
+-- Dizi detayları ve Bölümleri
+SELECT 
+    c.Title AS 'Dizi Adı',
+    c.ReleaseYear AS 'Yıl',
+    c.AverageScore AS 'Puan',
+    g.GenreName AS 'Tür',
+    e.SeasonNumber AS 'Sezon',
+    e.EpisodeNumber AS 'Bölüm',
+    e.Title AS 'Bölüm Adı',
+    e.Duration AS "Süre (dk)"
+FROM Content c
+JOIN Series s ON c.ContentID = s.ContentID
+JOIN Episode e ON s.ContentID = e.SeriesID
+JOIN Content_Genre cg ON c.ContentID = cg.ContentID
+JOIN Genre g ON cg.GenreID = g.GenreID
+ORDER BY c.Title, e.SeasonNumber, e.EpisodeNumber, g.GenreName;
+
+-- Platformdaki en çok bölüme sahip olan dizi ve bölüm sayısı
+SELECT 
+    c.Title AS 'Dizi Adı',
+    COUNT(e.EpisodeID) AS 'Toplam Bölüm Sayısı'
+FROM Content c
+JOIN Episode e ON c.ContentID = e.SeriesID
+WHERE c.ContentType = 'Series'
+GROUP BY c.Title
+ORDER BY COUNT(e.EpisodeID) DESC
+LIMIT 1;
+
+-- Profilin listesine eklediği içerikler
+SELECT 
+p.ProfileName AS "Profile Adı",
+c.Title AS "İçerik İsmi"
+FROM profile p
+JOIN mylist my ON p.ProfileID = my.ProfileID
+JOIN content c ON c.ContentID = my.ContentID
+WHERE p.profileName = "ErenMain";
+
+-- Kim, ne, ne kadar izledi
+SELECT 
+p.ProfileName "Profil İsmi",
+u.FirstName "Hesap Sahibi",
+c.Title "Film İsmi",
+e.Title"Bölüm İsmi",
+SUM(ws.DurationSeconds) AS "Toplam İzleme"
+FROM watch_session ws
+JOIN Profile p ON ws.ProfileID = p.ProfileID
+JOIN Users u ON u.UserID = p.UserID
+LEFT JOIN Movie m ON ws.MovieID = m.ContentID
+LEFT JOIN Content c ON m.ContentID = c.ContentID
+LEFT JOIN  episode e ON ws.EpisodeID = e.EpisodeID
+GROUP BY p.ProfileName, u.FirstName, c.Title, e.Title, ws.MovieID
+ORDER BY SUM(ws.DurationSeconds) DESC;
+
+
+
+
+
 
 
