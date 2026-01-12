@@ -653,9 +653,52 @@ LEFT JOIN  episode e ON ws.EpisodeID = e.EpisodeID
 GROUP BY p.ProfileName, u.FirstName, c.Title, e.Title, ws.MovieID
 ORDER BY SUM(ws.DurationSeconds) DESC;
 
+-- Audio dili İngizce olan içerikler
+SELECT 
+c.title "İçerik İsmi",
+l.LanguageName 
+FROM content c
+JOIN content_audio ca ON ca.ContentID = c.ContentID
+JOIN languages l ON ca.LanguageID = l.LanguageID
+ WHERE l.LanguageName = "İngilizce";
 
+-- Al Pacino oynadığı içerikler ve aldığı roller
+SELECT 
+c.Title,
+p.FullName,
+cre.CharacterName
+FROM content c
+JOIN credited cre ON c.ContentID = cre.ContentID
+JOIN person p ON cre.PersonID = p.PersonID
+WHERE p.FullName = "Al Pacino";
 
+-- AverageScore 8 ve üzeri olan içerikler
+SELECT 
+c.title AS "İçerik İsmi",
+c.AverageScore AS "Puan"
+FROM content c
+WHERE c.averagescore >8.00;
 
+-- User Eren şuana kadar ödediği tutar
+SELECT sum(pt.Amount) AS "Ödenen Tutar",
+u.FirstName "İsim",
+pt.PaymentMethod AS "Ödeme Yöntemi"
+FROM payment_transaction pt
+JOIN subscription_history sh ON  pt.HistoryID = sh.HistoryID
+JOIN users u ON sh.UserID = u.UserID
+WHERE u.FirstName = "Eren"
+GROUP BY  u.FirstName,
+pt.PaymentMethod;
 
+-- Hiçbir şey izlememiş kişiler
+SELECT p.ProfileName
+FROM profile p
+WHERE 
+NOT EXISTS( SELECT * FROM Watch_Session ws WHERE ws.ProfileID = p.ProfileID);
 
-
+-- Aksiyon türünde içerik izleyen kullanıcıların listesi
+SELECT * FROM profile p
+JOIN Watch_Session ws ON p.ProfileID = p.ProfileID 
+JOIN content_genre cg ON ws.movieID = cg.ContentID
+JOIN genre g ON cg.GenreID = g.GenreID
+WHERE g.GenreName = "Aksiyon";
